@@ -1,0 +1,214 @@
+class Skybox {
+public:
+    Skybox();
+    ~Skybox();
+    void initialize();
+    void render();
+    void update(float deltaTime);
+private:
+    unsigned int VAO, VBO, textureID;
+    std::vector<std::string> facePaths;
+    glm::mat4 projection, view;
+    float rotationSpeed;
+};
+
+
+
+
+
+
+
+Snow::Snow(unsigned int maxSnow) : m_MaxSnow(maximumSnow), m_SnowFlakeCount(0)
+{
+	m_SnowflakeShader = new Shader("Snowflake.vs", "Snowflake.fs");
+	triggerSnowflakes();
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+//------------------------------------- SNOW
+#include "glm/glm.hpp"
+#include "Shader.h"
+
+struct Snowflake 
+{
+    glm::vec3 m_Location;           // position in world space
+    glm::vec3 m_Speed;              // velocity vector
+    float     m_Size;               // size of the snowflake
+    glm::vec3 m_Colour;             // color of the snowflake
+    float     m_LifetimeDuration;   // life of the snowflake in seconds
+    float     m_AgeSinceSpawn;      // current age of the snowflake in seconds
+
+    Snowflake(glm::vec3 tempLoc, float tempSize, glm::vec3 tempColour) : 
+        m_Location(tempLoc), 
+        m_Size(tempSize), 
+        m_Colour(tempColour), 
+        m_LifetimeDuration(5.0f), 
+        m_AgeSinceSpawn(0.0f) 
+    {
+        m_Speed = glm::vec3(0.0f, -2.0f, 0.0f);
+    }
+};
+
+
+class Snow 
+{
+    public:
+        Snow(unsigned int maxSnow);
+        ~Snow();
+        void update(float deltaTime, glm::vec3 playerLocation);
+        void generate(glm::mat4 view, glm::mat4 projection, Shader& snowAssetShader);
+        void triggerSnowflakes();
+
+    private:
+        unsigned int m_MaxSnow;          /// maximum number of snowflakes
+        std::vector<std::unique_ptr<Snowflake>> m_Snowflakes;
+        GLuint       m_VAO, m_VBO;       /// VAO and VBO for rendering snowflakes
+};
+
+
+
+Snow::Snow(unsigned int maxSnow) : m_MaxSnow(maxSnow), m_SnowFlakeCount(0)
+{
+    glGenVertexArrays(1, &m_VAO);
+    glBindVertexArray(m_VAO);
+    glGenBuffers(1, &m_VBO);
+    glBindBuffer(GL_ARRAY_BUFFER, m_VBO);
+
+    GLfloat verts[] = {0.0, 0.0, 0.0};
+    glBufferData(GL_ARRAY_BUFFER, sizeof(verts), verts, GL_STATIC_DRAW);
+
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat), (GLvoid*)0);
+    glBindVertexArray(0);
+
+    m_Snowflakes = std::vector<std::unique_ptr<Snowflake>>();
+}
+
+
+
+Snow::~Snow() 
+{
+    for (auto flake : m_Snowflakes) 
+    {
+        delete flake;
+    }
+    delete m_SnowflakeShader;
+}
+
+
+void Snow::update(float deltaT, glm::vec3 playerLocation)
+{
+	for (auto& flake : m_Snowflakes) 
+	{
+      	if (flake) 
+		{
+            	flake->m_Location += flake->m_Speed * deltaT;
+            	flake->m_AgeSinceSpawn += deltaT;
+
+            	if (flake->m_Location.y < -10.0f || flake->m_AgeSinceSpawn >= flake->m_LifetimeDuration) 
+			{
+                		flake.reset();
+            	} 
+			else 
+			{
+                		/// Check for collision with ground
+                	if (flake->m_Location.y - flake->m_Size < 0.0f) 
+			{
+                    // Collision detected!
+                    // Register the collision here
+                	}
+            }
+	}
+ 		// Remove expired snowflakes from the vector
+    	m_Snowflakes.erase(std::remove_if(m_Snowflakes.begin(), m_Snowflakes.end(), [](const std::unique_ptr<Snowflake>& flake) { return !flake; }), m_Snowflakes.end());
+
+
+    		// Add new snowflakes up to the maximum allowed
+	while (m_Snowflakes.size() < m_MaxSnow) 
+	{
+		float xCoord = generateRandomFloat(-100.0f, 100.0f);
+  		float yCoord = generateRandomFloat(50.0f, 70.0f);
+		float zCoord = generateRandomFloat(-100.0f, 100.0f);
+
+		glm::vec3 location = playerLocation + glm::vec3(xCoord, yCoord, zCoord);
+		glm::vec3 color    = glm::vec3(1.0f, 1.0f, 1.0f);
+		m_Snowflakes.emplace_back(std::make_unique<Snowflake>(location, generateRandomFloat(0.05f, 0.2f), color));
+	}
+}
+
+
+
+
+void Snow::generate(glm::mat4 view, glm::mat4 projection, Shader& snowAssetShader)
+{
+	glBindVertexArray(m_VAO);
+	snowAssetShader.use();
+	snowAssetShader.setMat4("view", view);
+	snowAssetShader.setMat4("projection", projection);
+	
+	for (const auto& flake : m_Snowflakes) 
+	{
+		if (flake != nullptr) 
+		{
+				// Set model matrix for snowflake
+			glm::mat4 model = glm::mat4(1.0f);
+			model = glm::translate(model, flake->m_Location);
+			model = glm::scale(model, glm::vec3(flake->m_Size));
+			snowAssetShader.setVec3("color", flake->m_Colour);
+			snowAssetShader.setMat4("model", model);	
+    			glDrawArrays(GL_TRIANGLES, 0, 36); // Draw snowflake
+    		}
+	}
+	glBindVertexArray(0);		
+}
+
+
+void Snow::triggerSnowflakes()
+{
+ 	for (auto& flake : m_Snowflakes) 
+	{
+    		delete flake;
+    		flake = nullptr;
+	}
+}
+
+
+
+
+/**
+ * Generates a random float in the given range.
+ *
+ * @param min The minimum value for the random float.
+ * @param max The maximum value for the random float.
+ *
+ * @return A random float in the given range.
+ */
+float generateRandomFloat(float min, float max)
+{
+    // Create a random device to seed the generator.
+    std::random_device rd;
+
+    // Create a Mersenne Twister engine and seed it with the random device.
+    std::mt19937 gen(rd());
+
+    // Create a uniform distribution over the given range and generate a random float.
+    std::uniform_real_distribution<float> dis(min, max);
+    return dis(gen);
+}
+
+
+
+
+
